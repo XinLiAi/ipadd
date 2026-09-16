@@ -675,48 +675,63 @@ templates/approval_form_template.docx
 
 程序是扫描 `templates/*.docx` 取的，改名不影响使用，界面仍会自动载入。
 
-### 如果升级后仍然报 128
+### 如果升级到 v5/v6 后**仍然**报 128
 
-按顺序排查：
+那说明根因不是 Node 20。核心是 `git.exe 退出码 128`，
+而「路径 `.github\workflows\build-exe.yml` 无效」是**它的连带结果** ——
+代码没拉下来，后续步骤自然定位不到文件，于是把路径也标成错误。
 
-**1. 确认仓库里没有其它含非 ASCII 字符的路径**
+**先做这一件事（最可能的原因）：删掉仓库里的旧中文名文件**
+
+项目早期的模板叫：
+
+```
+templates/调度数据网接入地址批复单（模板）.docx     ← 含中文 + 全角括号
+```
+
+这个文件**可能还留在你的 GitHub 仓库里**。本地改名不会自动删除远端文件，
+git 会把它当作「已删除旧名 + 新增新名」，如果你只 push 了新文件而没提交删除，
+**旧文件仍在仓库中**，Windows 版 git 检出时就可能触发 128。
+
+在 GitHub 网页上确认：进入仓库 → `templates` 目录 → 看有几个文件。
+如果那个中文名还在，**直接删掉**：
 
 ```bash
-git ls-files | grep -P '[^\x00-\x7F]'
+git rm "templates/调度数据网接入地址批复单（模板）.docx"
+git commit -m "删除旧的中文名模板"
+git push
 ```
 
-有输出就把对应文件改成英文名。
+网页操作也行：点进文件 → 右上角垃圾桶 → Commit changes。
 
-**2. 确认工作流文件没被 Windows 工具改坏**
+**然后用诊断工作流定位**
 
-在 GitHub 网页上打开 `.github/workflows/build-exe.yml`，
-看开头是不是 `name: Build EXE`，有没有出现乱码或 BOM。
+项目新增了 `.github/workflows/diagnose.yml`，它会：
 
-**3. 用最简配置测一次**
+| 步骤 | 作用 |
+|---|---|
+| 打印 git 版本与全部配置 | 看 `core.longpaths` 等是否被改过 |
+| 执行 checkout 并报告结果 | 明确是哪一步失败 |
+| 列出仓库根目录与 `.github` | 确认文件是否真的被检出 |
+| 打印工作流文件前 16 字节 | 查出 BOM / 编码损坏 |
+| 扫描非 ASCII 路径 | 直接揪出所有中文文件名 |
+| 开 longpaths 后重试 fetch | 验证是否是路径长度问题 |
 
-临时建一个只做 checkout 的工作流，确认 `checkout@v5` 本身能跑通：
+**Actions → Diagnose → Run workflow** 跑一次，把输出发来即可定位。
 
-```yaml
-name: Smoke Test
-on: workflow_dispatch
-jobs:
-  t:
-    runs-on: windows-2022
-    steps:
-      - uses: actions/checkout@v5
-      - run: Get-ChildItem
-```
+如果 `探测非ASCII路径` 那步有 `NON-ASCII:` 输出，把列出的文件全部改成英文名。
 
-这个过了就说明是构建步骤的问题，不是 checkout 的问题。
+**最后一招：绕开 Actions**
 
-**4. 最后一招：绕开 Actions**
-
-云端打包本来就不是必须的。**在目标机器上本地打包**是唯一 100% 可靠的路径：
+云端打包本来就不是必须的。**在目标机器上本地打包**是唯一 100% 可靠的路径，
+而且只花 5 分钟，比反复调 CI 快得多：
 
 ```bash
 python install_deps.py
 BUILD.bat
 ```
+
+本地打包还能顺便验证：如果本地也报错，说明是代码问题而非 CI 问题。
 
 ### 关于 legacy job 的一个风险
 
