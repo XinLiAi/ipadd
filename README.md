@@ -480,6 +480,49 @@ GitHub 官方的 Windows 运行器是 **Server 2019 / 2022 / 2025**，都是 NT 
 > 云端构建的结果我无法在 Linux 沙盒里验证。**请务必拷到目标机器上实测。**
 > 若云端版跑不起来，回到「在目标机器上本地打包」这条最稳的路。
 
+### 零、常见坑：多出一个 conda 工作流
+
+如果 Actions 里报这个错：
+
+```
+EnvironmentFileNotFound: '.../environment.yml' file not found
+Error: Process completed with exit code 1.
+```
+
+**跑失败的不是本项目的工作流。**
+
+判断依据有三点：
+
+| 线索 | 说明 |
+|---|---|
+| 路径是 `/home/runner/...` | 本项目工作流用的是 `windows-2022`，只会出现 `D:\a\...` |
+| 命令是 `conda env update` | 本项目工作流从不用 conda，只用 `pip` |
+| 步骤名叫 `Install dependencies` | 本项目是 `Install dependencies (PySide2 / Qt 5)` 这类带括号的名字 |
+
+这是 **GitHub 在你打开 Actions 页面时自动推荐的「Python package using Anaconda」模板**，
+它会去找 `environment.yml`，而项目里本来没有这个文件。
+
+**两种解法，任选其一：**
+
+**A. 删掉那个工作流（推荐）**
+
+```bash
+# 先看看到底有哪些工作流
+ls .github/workflows/
+
+# 删掉 conda 那个（名字可能是 python-package-conda.yml）
+git rm .github/workflows/python-package-conda.yml
+git commit -m "删除自动生成的 conda 工作流"
+git push
+```
+
+也可以在 GitHub 网页上操作：进入该文件 → 右上角垃圾桶 → Commit。
+
+**B. 保留它，补一个 environment.yml**
+
+项目里已经附了 `environment.yml`，所以即使留着也能通过安装步骤。
+但它**不会产出 exe**，只是不报错而已 —— 真正打包的还是 `build-exe.yml`。
+
 ### 一、上传到 GitHub
 
 项目里已备好 `.gitignore`（会自动排除 `.venv`、`build`、`dist`、

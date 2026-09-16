@@ -1,0 +1,35 @@
+# Conda environment definition
+#
+# Why this file exists
+# --------------------
+# GitHub may auto-suggest a "Python package using Anaconda" starter workflow
+# when you open the Actions tab of a new repository. That workflow runs:
+#
+#     conda env update --file environment.yml --name base
+#
+# and fails immediately if this file is missing:
+#
+#     EnvironmentFileNotFound: '.../environment.yml' file not found
+#
+# Keeping this file here lets that workflow pass its install step.
+#
+# HOWEVER: that workflow does NOT build the EXE. The real build lives in
+# .github/workflows/build-exe.yml. If you do not need conda, the cleaner
+# fix is to delete the anaconda workflow entirely - see README chapter 16.
+#
+# This environment mirrors the "modern" build (Qt 6 / Python 3.11), which
+# is enough for linting or running the test suite on CI.
+
+name: base
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - --only-binary=:all:
+      - PySide6-Essentials>=6.5
+      - openpyxl>=3.1
+      - python-docx>=1.1
+      - pyinstaller>=6.0
