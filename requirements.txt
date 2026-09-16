@@ -1,0 +1,8 @@
+# Qt binding: install_deps.py picks the right one for your Windows version.
+#   Windows 10 / 11             -> PySide6  (Qt 6)
+#   Windows 7 / Server 2008 R2  -> PySide2  (Qt 5)
+# Qt 6 needs Windows 10 1809+ and will NOT load on older systems.
+PySide6-Essentials>=6.5
+openpyxl>=3.1
+python-docx>=1.1
+pyinstaller>=6.0
