@@ -246,7 +246,7 @@ python cli.py --realtime 10.20.1.160 --nonrealtime 10.20.2.160 -o 业务地址�
 | `INSTALL.bat` | 只装依赖，附带 MSVC 报错的自动修复 |
 | `IPAddressTool.spec` | PyInstaller 打包配置（正式版） |
 | `DiagBuild.spec` | PyInstaller 打包配置（诊断版，保留控制台） |
-| `templates/` | 内置的《调度数据网接入地址批复单》模板 |
+| `templates/approval_form_template.docx` | 内置的《调度数据网接入地址批复单》模板 |
 | `ip_ledger.py` | 历史台账模块（SQLite：归档 / 查询 / 查重 / 导出） |
 | `qt_compat.py` | **Qt 绑定兼容层**：自动选 PySide6 / PySide2 / PyQt5 |
 | `check_env.py` | 环境自检脚本（纯 ASCII 输出，供 CHECK.bat 调用） |
@@ -616,7 +616,122 @@ START.vbs       # 运行
 
 ---
 
-## 十七、常见问题
+## 十七、Actions 报错：git.exe 退出码 128 / Node 20 弃用
+
+### 典型现象
+
+Actions 运行完后 Annotations 面板显示：
+
+```
+4 errors and 2 warnings
+  [error] Legacy EXE (Qt5 / Win7+)   git.exe 失败，退出码 128
+  [error] Legacy EXE (Qt5 / Win7+)   路径 .github\workflows\build-exe.yml 无效
+  [error] Modern EXE (Qt6 / Win10+)  git.exe 失败，退出码 128
+  [error] Modern EXE (Qt6 / Win10+)  路径 .github\workflows\build-exe.yml 无效
+  [warning] Node.js 20 actions are deprecated ... forced to run on Node.js 24
+```
+
+### 根因：这两个问题同源
+
+**Node 20 已经走到生命末期。** GitHub 的时间线：
+
+| 时间 | 事件 |
+|---|---|
+| 2026-04 | Node.js 20 EOL |
+| **2026-06-16** | 运行器**默认改用 Node 24** |
+| 2026-09-23 | Node 20 从运行器彻底移除 |
+
+我最初写的工作流用的是 `actions/checkout@v4` + `actions/setup-python@v5`，
+这两个都声明 `runs.using: node20`。2026 年 6 月之后被强制塞进 Node 24 运行时，
+**`checkout` 内部调用的 git 命令就可能异常退出（128）**，连带把路径也报成无效。
+
+所以：**升级 action 版本，4 errors 和 2 warnings 一起解决。**
+
+### 已升级的版本
+
+| Action | 旧 | 新 | 说明 |
+|---|---|---|---|
+| `actions/checkout` | v4 | **v5** | Node 24，要求 runner ≥ 2.327.1 |
+| `actions/setup-python` | v5 | **v6** | Node 24 |
+| `actions/upload-artifact` | v4 | **v5** | Node 24 |
+
+拉取新代码重新推一次即可：
+
+```bash
+git pull
+git push
+```
+
+> 如果你改过这个文件，手工把上面三个 `@vN` 改掉也是一样的。
+
+### 顺带修的隐患：中文文件名
+
+原来的模板叫 `调度数据网接入地址批复单（模板）.docx`，含中文和**全角括号**。
+在 Windows 版 git 上有触发路径问题的风险，现已改为纯 ASCII：
+
+```
+templates/approval_form_template.docx
+```
+
+程序是扫描 `templates/*.docx` 取的，改名不影响使用，界面仍会自动载入。
+
+### 如果升级后仍然报 128
+
+按顺序排查：
+
+**1. 确认仓库里没有其它含非 ASCII 字符的路径**
+
+```bash
+git ls-files | grep -P '[^\x00-\x7F]'
+```
+
+有输出就把对应文件改成英文名。
+
+**2. 确认工作流文件没被 Windows 工具改坏**
+
+在 GitHub 网页上打开 `.github/workflows/build-exe.yml`，
+看开头是不是 `name: Build EXE`，有没有出现乱码或 BOM。
+
+**3. 用最简配置测一次**
+
+临时建一个只做 checkout 的工作流，确认 `checkout@v5` 本身能跑通：
+
+```yaml
+name: Smoke Test
+on: workflow_dispatch
+jobs:
+  t:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v5
+      - run: Get-ChildItem
+```
+
+这个过了就说明是构建步骤的问题，不是 checkout 的问题。
+
+**4. 最后一招：绕开 Actions**
+
+云端打包本来就不是必须的。**在目标机器上本地打包**是唯一 100% 可靠的路径：
+
+```bash
+python install_deps.py
+BUILD.bat
+```
+
+### 关于 legacy job 的一个风险
+
+`legacy` 用 `python-version: '3.8'`，而 Python 3.8 已于 2024-10 EOL。
+`setup-python` 的 v7 已明确移除 EOL 版本，v6 目前还能拉到 3.8，
+但**将来某天可能拉不到**。
+
+那时 legacy job 会失败。备选方案：
+
+- 改成本地打包（推荐）
+- 或用 `windows-2019` runner（自带 Python 3.8 的可能性更高，但同样不保证）
+
+---
+
+## 十八、常见问题
 
 **Q：为什么有的行显示「未启用/无偏移」？**
 该业务在左侧被取消勾选，或没填偏移。勾上并填偏移就会参与填充。批复单里的「区调同步时钟」「区调安控1/2」默认就是这样 —— 内置模板没给它们分配偏移，需要你按实际情况补。

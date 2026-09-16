@@ -12,7 +12,7 @@ import ip_word as W
 
 SRC = "/data/inputs/那曲色尼风电调度数据网接入地址批复单.docx"
 BUILTIN = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                       "templates", "调度数据网接入地址批复单（模板）.docx")
+                       "templates", "approval_form_template.docx")
 TMP = tempfile.mkdtemp(prefix="ipword_")
 
 # 批复单实测的起始 IP（网络位）

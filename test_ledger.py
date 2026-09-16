@@ -13,7 +13,7 @@ import ip_word as W
 
 TMP = tempfile.mkdtemp(prefix="ipledger_")
 TPL = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                   "templates", "调度数据网接入地址批复单（模板）.docx")
+                   "templates", "approval_form_template.docx")
 
 
 # ---------------------------------------------------------------- 工具函数
