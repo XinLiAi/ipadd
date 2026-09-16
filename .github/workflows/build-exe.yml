@@ -16,6 +16,13 @@ name: Build EXE
 #   actions/checkout        v4 -> v5   (Node 24, needs runner >= 2.327.1)
 #   actions/setup-python    v5 -> v6   (Node 24)
 #   actions/upload-artifact v4 -> v5   (Node 24)
+#
+# If checkout still fails with "git.exe exit code 128":
+#   1. Delete any legacy non-ASCII filename still present in the repo
+#      (e.g. templates/调度数据网接入地址批复单（模板）.docx).
+#      Rename alone does NOT remove it from git history / working tree.
+#   2. Run .github/workflows/diagnose.yml to see where it breaks.
+#   3. Or just build locally - see README chapter 16.
 # ---------------------------------------------------------------------------
 
 on:
@@ -43,8 +50,17 @@ jobs:
     if: github.event.inputs.target != 'modern'
     runs-on: windows-2022
     steps:
+      - name: Git robustness config
+        run: |
+          git config --global core.longpaths true
+          git config --global core.autocrlf false
+          git config --global core.quotepath false
+          git --version
+
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
 
       - name: Setup Python 3.8
         uses: actions/setup-python@v6
@@ -82,8 +98,17 @@ jobs:
     if: github.event.inputs.target != 'legacy'
     runs-on: windows-2022
     steps:
+      - name: Git robustness config
+        run: |
+          git config --global core.longpaths true
+          git config --global core.autocrlf false
+          git config --global core.quotepath false
+          git --version
+
       - name: Checkout
         uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
 
       - name: Setup Python 3.11
         uses: actions/setup-python@v6
