@@ -1,0 +1,64 @@
+name: Diagnose
+
+# Minimal workflow to isolate a failing checkout.
+# If this fails too, the problem is NOT in build-exe.yml.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe checkout
+    runs-on: windows-2022
+    steps:
+      - name: Git version and config
+        run: |
+          git --version
+          git config --list --show-origin
+
+      - name: Checkout (default)
+        id: co
+        uses: actions/checkout@v5
+
+      - name: Report checkout result
+        if: always()
+        run: |
+          Write-Output "checkout outcome: ${{ steps.co.outcome }}"
+          Write-Output "workspace: $env:GITHUB_WORKSPACE"
+
+      - name: List repository root
+        if: always()
+        run: Get-ChildItem -Force
+
+      - name: List workflows
+        if: always()
+        run: Get-ChildItem -Recurse .github -ErrorAction SilentlyContinue
+
+      - name: Show workflow file bytes
+        if: always()
+        run: |
+          $p = ".github/workflows/build-exe.yml"
+          if (Test-Path $p) {
+            $b = [System.IO.File]::ReadAllBytes($p)
+            Write-Output "size: $($b.Length)"
+            Write-Output "first bytes: $($b[0..15] -join ',')"
+          } else {
+            Write-Output "MISSING: $p"
+          }
+
+      - name: Detect non-ASCII paths
+        if: always()
+        run: |
+          git ls-files | Where-Object { $_ -match '[^\x00-\x7F]' } |
+            ForEach-Object { Write-Output "NON-ASCII: $_" }
+          Write-Output "--- scan done ---"
+
+      - name: Enable long paths and retry fetch
+        if: always()
+        run: |
+          git config --global core.longpaths true
+          git config --global core.autocrlf false
+          git fetch --all
+          git status
