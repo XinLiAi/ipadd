@@ -1,141 +1,75 @@
-name: Build EXE
+name: Build Windows EXE + Installer
 
-# ---------------------------------------------------------------------------
-# Builds a Windows EXE with PyInstaller.
-#
-#   legacy  -> Python 3.8 + PySide2 (Qt 5)  : Win7 SP1 / Server 2008 R2 and later
-#   modern  -> Python 3.11 + PySide6 (Qt 6) : Win10 1809 / Server 2016 and later
-#
-# The Python version used to BUILD matters: python38.dll is bundled into the
-# EXE and is the last one that runs on Windows 7. Python 3.9+ installers
-# actively refuse to run on Win7 (PEP 11).
-#
-# Action versions below are deliberately the Node.js 24 line.
-# The old v4 / v5 pairs run on Node 20, which GitHub deprecated:
-# they now emit warnings and can fail with "git.exe exit code 128".
-#   actions/checkout        v4 -> v5   (Node 24, needs runner >= 2.327.1)
-#   actions/setup-python    v5 -> v6   (Node 24)
-#   actions/upload-artifact v4 -> v5   (Node 24)
-#
-# If checkout still fails with "git.exe exit code 128":
-#   1. Delete any legacy non-ASCII filename still present in the repo
-#      (e.g. templates/调度数据网接入地址批复单（模板）.docx).
-#      Rename alone does NOT remove it from git history / working tree.
-#   2. Run .github/workflows/diagnose.yml to see where it breaks.
-#   3. Or just build locally - see README chapter 16.
-# ---------------------------------------------------------------------------
+# ============================================================
+#  在 GitHub 云端自动打包 Windows EXE + 一键安装包（免费，无需本机 Windows）
+# ============================================================
+#  使用步骤：
+#  1. 把本项目文件上传到一个 GitHub 仓库（公开或私有均可）
+#  2. 本文件放到仓库 .github/workflows/build_exe.yml
+#  3. 仓库页面 -> Actions -> 左侧 "Build Windows EXE + Installer"
+#     -> 右上角 "Run workflow" -> 绿色按钮
+#  4. 等约 3-5 分钟 -> 打开本次运行 -> Artifacts
+#     -> 下载 DeviceManager-package.zip，里面含 EXE 和安装包
+# ============================================================
 
 on:
   workflow_dispatch:
-    inputs:
-      target:
-        description: Which build to produce
-        required: true
-        default: both
-        type: choice
-        options:
-          - both
-          - legacy
-          - modern
   push:
-    tags:
-      - 'v*'
-
-permissions:
-  contents: read
+    tags: ["v*"]
 
 jobs:
-  legacy:
-    name: Legacy EXE Qt5 Win7
-    if: github.event.inputs.target != 'modern'
-    runs-on: windows-2022
+  build:
+    runs-on: windows-latest
     steps:
-      - name: Git robustness config
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      - name: 检查文件（调试用）
+        shell: cmd
         run: |
-          git config --global core.longpaths true
-          git config --global core.autocrlf false
-          git config --global core.quotepath false
-          git --version
+          echo === 当前目录文件列表 ===
+          dir /b
+          echo.
+          echo === 检查关键文件 ===
+          if exist device_manager.py (echo [OK] device_manager.py) else (echo [缺失] device_manager.py)
+          if exist device_manager.spec (echo [OK] device_manager.spec) else (echo [缺失] device_manager.spec)
+          if exist device_manager_installer.iss (echo [OK] device_manager_installer.iss) else (echo [缺失] device_manager_installer.iss)
+          if exist device_manager.ico (echo [OK] device_manager.ico) else (echo [提示] device_manager.ico 不存在，将使用默认图标)
 
-      - name: Checkout
-        uses: actions/checkout@v5
+      - name: 安装 Python（3.8 是最后一个支持 Win7 的版本）
+        uses: actions/setup-python@v5
         with:
-          fetch-depth: 1
+          python-version: "3.8"
 
-      - name: Setup Python 3.8
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.8'
-
-      - name: Show environment
+      - name: 安装打包依赖（固定版本，确保 Win7 兼容）
         run: |
-          python --version
-          python -c "import sys; print(sys.executable)"
+          python -m pip install --upgrade "pip<24"
+          pip install pyinstaller==5.13.2 openpyxl==3.1.2
 
-      - name: Install dependencies PySide2 Qt5
+      - name: 打包 EXE（单文件、无控制台、带图标）
+        run: python -m PyInstaller --noconfirm --clean device_manager.spec
+
+      - name: 安装 Inno Setup（生成一键安装包）
+        run: choco install innosetup -y --no-progress
+        continue-on-error: true
+
+      - name: 编译安装包
+        shell: cmd
+        continue-on-error: true
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install --only-binary=:all: PySide2 openpyxl python-docx
-          python -m pip install --only-binary=:all: "pyinstaller<6"
+          if exist "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" (
+            "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" device_manager_installer.iss
+          ) else if exist "C:\Program Files\Inno Setup 6\ISCC.exe" (
+            "C:\Program Files\Inno Setup 6\ISCC.exe" device_manager_installer.iss
+          ) else (
+            echo [警告] 未找到 ISCC.exe，跳过安装包生成（EXE 仍可正常下载）
+          )
 
-      - name: Show Qt binding
-        run: python qt_compat.py
-
-      - name: Build
-        run: python -m PyInstaller IPAddressTool.spec --clean --noconfirm
-
-      - name: List output
-        run: Get-ChildItem dist
-
-      - name: Upload
-        uses: actions/upload-artifact@v5
+      - name: 上传产物（EXE + 安装包）
+        uses: actions/upload-artifact@v4
         with:
-          name: IPAddressTool_PySide2_Win7
-          path: dist/*.exe
-
-  modern:
-    name: Modern EXE Qt6 Win10
-    if: github.event.inputs.target != 'legacy'
-    runs-on: windows-2022
-    steps:
-      - name: Git robustness config
-        run: |
-          git config --global core.longpaths true
-          git config --global core.autocrlf false
-          git config --global core.quotepath false
-          git --version
-
-      - name: Checkout
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.11'
-
-      - name: Show environment
-        run: |
-          python --version
-          python -c "import sys; print(sys.executable)"
-
-      - name: Install dependencies PySide6 Qt6
-        run: |
-          python -m pip install --only-binary=:all: PySide6-Essentials openpyxl python-docx
-          python -m pip install --only-binary=:all: pyinstaller
-
-      - name: Show Qt binding
-        run: python qt_compat.py
-
-      - name: Build
-        run: python -m PyInstaller IPAddressTool.spec --clean --noconfirm
-
-      - name: List output
-        run: Get-ChildItem dist
-
-      - name: Upload
-        uses: actions/upload-artifact@v5
-        with:
-          name: IPAddressTool_PySide6_Win10
-          path: dist/*.exe
+          name: DeviceManager-package
+          path: |
+            dist/DeviceManager.exe
+            Output/*.exe
+          if-no-files-found: error
