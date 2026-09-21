@@ -1178,12 +1178,17 @@ class DeviceManagerApp:
             tree.column(col, width=w, anchor=tk.W)
         tree.pack(fill=tk.BOTH, expand=True, padx=16, pady=6)
 
+        show_pwd_var = tk.IntVar(value=0)
+
         def refresh():
             for it in tree.get_children():
                 tree.delete(it)
             for a in list_device_accounts(device_id):
                 aid, uname, pwd_enc, priv, _ = a
-                pwd = "******" if pwd_enc else ""
+                if show_pwd_var.get() and pwd_enc:
+                    pwd = decrypt_text(self.key, pwd_enc) or ""
+                else:
+                    pwd = "******" if pwd_enc else ""
                 tree.insert("", tk.END, iid=str(aid), values=(uname or "", priv or "", pwd))
 
         refresh()
@@ -1218,6 +1223,9 @@ class DeviceManagerApp:
         tk.Button(bar, text="删除", command=on_delete,
                   bg="#FFFFFF", fg=self.C_DANGER, activebackground="#FEF2F2",
                   relief="solid", bd=1, padx=14, pady=6, font=(self.font_family, 10)).pack(side=tk.LEFT)
+        tk.Checkbutton(bar, text="显示密码", variable=show_pwd_var, command=refresh,
+                       bg=self.C_BG, fg=self.C_TEXT, activebackground=self.C_BG,
+                       font=(self.font_family, 10)).pack(side=tk.LEFT, padx=10)
         tk.Button(bar, text="关 闭", command=dlg.destroy,
                   bg="#FFFFFF", fg=self.C_TEXT, activebackground=self.C_BORDER,
                   relief="solid", bd=1, padx=14, pady=6, font=(self.font_family, 10)).pack(side=tk.RIGHT)
@@ -1268,10 +1276,19 @@ class DeviceManagerApp:
         tk.Label(form, text="密码 %s" % ("" if editing else "*（留空则不修改）"),
                  bg=self.C_BG, fg=self.C_TEXT, font=(self.font_family, 10)).grid(
             row=4, column=0, sticky=tk.W, pady=(0, 2))
-        pwd_var = tk.StringVar()
-        tk.Entry(form, textvariable=pwd_var, show="*", font=(self.font_family, 11),
-                 relief="solid", bd=1).grid(row=5, column=0, sticky=tk.EW, pady=(0, 4))
+        pwd_var = tk.StringVar(value=(decrypt_text(self.key, cur[2]) if (editing and cur and cur[2]) else ""))
+        pwd_entry = tk.Entry(form, textvariable=pwd_var, show="*", font=(self.font_family, 11),
+                             relief="solid", bd=1)
+        pwd_entry.grid(row=5, column=0, sticky=tk.EW, pady=(0, 2))
         form.grid_columnconfigure(0, weight=1)
+
+        def toggle_show():
+            pwd_entry.config(show="" if show_pwd_chk.get() else "*")
+        show_pwd_chk = tk.IntVar(value=1 if editing else 0)
+        tk.Checkbutton(form, text="显示密码", variable=show_pwd_chk, command=toggle_show,
+                       bg=self.C_BG, fg=self.C_MUTED, activebackground=self.C_BG,
+                       font=(self.font_family, 9)).grid(row=6, column=0, sticky=tk.W, pady=(0, 4))
+        toggle_show()
 
         bar = tk.Frame(dlg, bg=self.C_BG)
         bar.pack(fill=tk.X, padx=20, pady=(0, 14))
